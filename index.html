@@ -1,0 +1,143 @@
+!DOCTYPE html
+html lang=zh-TW
+head
+    meta charset=UTF-8
+    titleRaken 運勢鞭炮 Overlaytitle
+    script src=httpscdn.jsdelivr.netnpmcomfy.js@1.1.6distcomfy.min.jsscript
+    style
+        body { margin 0; overflow hidden; font-family Microsoft JhengHei, sans-serif; background transparent; }
+        #overlay-container { width 100vw; height 100vh; position relative; display flex; justify-content center; align-items center; flex-direction column; }
+        
+         文案樣式 
+        .announcement {
+            text-align center;
+            font-size 60px; font-weight bold;
+            color #ff2424; 
+            text-shadow 0 0 15px gold, 2px 2px 0px #8b0000;
+            opacity 0; transform scale(0.5);
+            transition all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index 10;
+        }
+
+         鞭炮碎屑粒子 
+        .particle {
+            position absolute;
+            width 12px; height 18px;
+            pointer-events none;
+            z-index 5;
+        }
+
+         畫面震動 
+        @keyframes shake {
+            0% { transform translate(8px, 8px); }
+            25% { transform translate(-8px, -8px); }
+            50% { transform translate(-8px, 8px); }
+            75% { transform translate(8px, -8px); }
+            100% { transform translate(0, 0); }
+        }
+        .shaking { animation shake 0.1s infinite; }
+    style
+head
+body onclick=testEffect() div id=overlay-container
+        div id=text-display class=announcementdiv
+    div
+
+script
+     --- 1. 初始化參數 ---
+    const params = new URLSearchParams(window.location.search);
+    const channel = params.get('channel')  'rakenluck111';  預設為你的頻道
+    const targetReward = params.get('reward')  放鞭炮;  預設獎勵名稱
+
+     --- 2. 隨機文案庫 ---
+    const quotes = [
+        新的一年，垃圾桶裡都是寶藏！,
+        新的一年，剪輯速度突破天際！,
+        新的一年，所有霉運都被炸飛啦！,
+        新的一年，浣熊尾巴又順又亮！,
+        新的一年，紅紅火火大吉大利！,
+        新的一年，金幣滿滿進帳不停！
+    ];
+
+     --- 3. 佇列系統 (防止多人同時兌換被吃掉) ---
+    let effectQueue = []; 
+    let isPlaying = false; 
+
+     監聽 Twitch 兌換
+    ComfyJS.onRewardRedemption = (user, reward, cost, message) = {
+        if (reward === targetReward) {
+            effectQueue.push({ user user });
+            processQueue();
+        }
+    };
+
+    function processQueue() {
+        if (!isPlaying && effectQueue.length  0) {
+            const next = effectQueue.shift();
+            runAnimation(next.user);
+        }
+    }
+
+     --- 4. 動畫核心邏輯 ---
+    function runAnimation(user) {
+        isPlaying = true;
+        const textDisplay = document.getElementById('text-display');
+        const randomQuote = quotes[Math.floor(Math.random()  quotes.length)];
+        
+         更新文案
+        textDisplay.innerHTML = `div style=font-size 40px;${user} 驅散了霉運divdiv${randomQuote}div`;
+        textDisplay.style.opacity = 1;
+        textDisplay.style.transform = scale(1);
+
+         觸發震動與粒子
+        document.body.classList.add('shaking');
+        for(let i=0; i60; i++) { createParticle(); }
+
+         4秒後結束，檢查下一個排隊
+        setTimeout(() = {
+            textDisplay.style.opacity = 0;
+            textDisplay.style.transform = scale(0.5);
+            document.body.classList.remove('shaking');
+            
+            setTimeout(() = {
+                isPlaying = false;
+                processQueue();
+            }, 500);  緩衝時間
+        }, 4000);
+    }
+
+     產生粒子 (鞭炮紅紙)
+    function createParticle() {
+        const p = document.createElement('div');
+        p.className = 'particle';
+        document.getElementById('overlay-container').appendChild(p);
+
+        const x = window.innerWidth  2;
+        const y = window.innerHeight  2;
+        const destX = (Math.random() - 0.5)  1000;
+        const destY = (Math.random() - 0.5)  1000;
+
+        p.style.left = x + 'px';
+        p.style.top = y + 'px';
+        p.style.backgroundColor = Math.random()  0.3  '#ff2424'  '#ffd700';
+
+        p.animate([
+            { transform 'translate(0, 0) rotate(0deg)', opacity 1 },
+            { transform `translate(${destX}px, ${destY}px) rotate(${Math.random()720}deg)`, opacity 0 }
+        ], { duration 1500 + Math.random()  1000, easing 'ease-out' }).onfinish = () = p.remove();
+    }
+
+     測試功能：點擊螢幕模擬兌換
+    function testEffect() {
+        console.log(測試觸發！);
+        effectQueue.push({ user 測試小夥伴 });
+        processQueue();
+    }
+
+     啟動 ComfyJS
+    if(channel) {
+        ComfyJS.Init(channel);
+        console.log(`Raken 鞭炮工具已啟動，監聽頻道 ${channel}`);
+    }
+script
+body
+html
