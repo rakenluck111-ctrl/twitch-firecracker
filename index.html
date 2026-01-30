@@ -1,61 +1,252 @@
-// --- 基礎設定 ---
-const params = new URLSearchParams(window.location.search);
-const channel = params.get('channel') || 'rakenluck111';
-const targetReward = params.get('reward') || "放鞭炮";
-
-// --- 佇列系統核心 ---
-let effectQueue = []; // 存放等待播放的兌換資料
-let isPlaying = false; // 目前是否正在播放動畫
-
-const quotes = [
-    "新的一年，垃圾桶裡都是寶藏！",
-    "新的一年，剪輯速度突破天際！",
-    "新的一年，所有霉運都被炸飛啦！",
-    "新的一年，浣熊尾巴又順又亮！"
-];
-
-// 當 Twitch 收到兌換時
-ComfyJS.onRewardRedemption = (user, reward, cost, message) => {
-    if (reward === targetReward) {
-        // 將使用者加入排隊名單，不直接執行
-        effectQueue.push({ user: user, message: message });
-        checkQueue(); 
-    }
-};
-
-// 檢查隊伍狀況
-function checkQueue() {
-    // 如果目前沒人在播放，且隊伍裡有人的話
-    if (!isPlaying && effectQueue.length > 0) {
-        const nextData = effectQueue.shift(); // 取出隊伍第一個人
-        startAnimation(nextData.user);
-    }
-}
-
-function startAnimation(user) {
-    isPlaying = true;
-    const textDisplay = document.getElementById('text-display');
-    const randomQuote = quotes[Math.floor(Math.random() * quotes.length)];
-    
-    // 顯示文案
-    textDisplay.innerHTML = `<div>${user} 驅散了霉運</div><div style="font-size: 32px">${randomQuote}</div>`;
-    textDisplay.style.opacity = 1;
-    textDisplay.style.transform = "scale(1.2)";
-
-    // 觸發視覺效果
-    document.body.classList.add('shaking');
-    for(let i=0; i<50; i++) { createParticle(); }
-
-    // 設定播放時間（例如 4 秒後結束並換下一個）
-    setTimeout(() => {
-        textDisplay.style.opacity = 0;
-        textDisplay.style.transform = "scale(0.5)";
-        document.body.classList.remove('shaking');
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Raken SVG 真實鞭炮 Overlay</title>
+    <script src="https://cdn.jsdelivr.net/npm/comfy.js@1.1.6/dist/comfy.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: "Microsoft JhengHei", sans-serif; background: transparent; }
         
-        isPlaying = false; // 標記播放結束
-        checkQueue(); // 繼續檢查隊伍是否有下一個人
-    }, 4000); 
-}
+        #scene-container { 
+            width: 100vw; height: 100vh; 
+            position: relative; 
+            display: flex; justify-content: center; align-items: center; 
+        }
 
-// --- 以下保留你之前的 Token 處理與粒子產生邏輯 ---
-ComfyJS.Init(channel);
+        /* SVG 容器 */
+        #svg-wrapper {
+            height: 70vh; /* 調整鞭炮整體大小 */
+            opacity: 0; /* 一開始隱藏 */
+            transition: opacity 0.5s;
+            filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
+        }
+
+        /* 讓 SVG 裡面的元件可以被隱藏 */
+        #svg-wrapper svg {
+            height: 100%; width: auto;
+            overflow: visible;
+        }
+
+        /* 爆炸閃光特效 */
+        .boom {
+            position: absolute;
+            width: 80px; height: 80px;
+            background: radial-gradient(circle, #fff 20%, #ffaa00 50%, transparent 70%);
+            border-radius: 50%;
+            pointer-events: none;
+            opacity: 0;
+            z-index: 100;
+            mix-blend-mode: screen; /* 讓光效更亮 */
+        }
+
+        /* 爆炸動畫 */
+        @keyframes explodeAnim {
+            0% { transform: scale(0.2); opacity: 1; }
+            50% { opacity: 0.8; }
+            100% { transform: scale(2.5); opacity: 0; }
+        }
+
+        /* 結果文字 */
+        #result-text {
+            position: absolute;
+            text-align: center;
+            opacity: 0;
+            transition: all 0.5s ease-out;
+            z-index: 200;
+            transform: scale(0.5);
+        }
+
+        .user-name {
+            font-size: 32px; color: #fff; 
+            text-shadow: 0 0 5px #000;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .lucky-quote {
+            font-size: 50px; font-weight: bold; 
+            color: #ff2424; 
+            background: #fff;
+            padding: 15px 30px;
+            border-radius: 50px;
+            box-shadow: 0 0 30px gold;
+            border: 4px solid gold;
+            white-space: nowrap;
+        }
+        
+        /* 震動特效 */
+        .shaking { animation: shake 0.05s infinite; }
+        @keyframes shake {
+            0% { transform: translate(1px, 1px); }
+            50% { transform: translate(-1px, -1px); }
+            100% { transform: translate(0, 0); }
+        }
+
+    </style>
+</head>
+<body onclick="testEffect()"> 
+
+    <div id="scene-container">
+        <div id="svg-wrapper"></div>
+        
+        <div id="result-text">
+            <div id="u-name" class="user-name"></div>
+            <div id="q-text" class="lucky-quote"></div>
+        </div>
+    </div>
+
+<script>
+    const params = new URLSearchParams(window.location.search);
+    const channel = params.get('channel') || 'rakenluck111';
+    const targetReward = params.get('reward') || "放鞭炮";
+
+    const quotes = [
+        "新的一年，垃圾桶裡都是寶藏！",
+        "新的一年，剪輯速度突破天際！",
+        "新的一年，所有霉運都被炸飛啦！",
+        "新的一年，浣熊尾巴又順又亮！",
+        "新的一年，紅紅火火大吉大利！",
+        "新的一年，金幣滿滿進帳不停！"
+    ];
+
+    let effectQueue = [];
+    let isPlaying = false;
+    let svgContent = null; // 儲存 SVG 內容
+
+    // 1. 預先載入 SVG 檔案
+    fetch('./firecracker.svg')
+        .then(response => response.text())
+        .then(data => {
+            svgContent = data;
+            console.log("SVG 載入完成");
+        })
+        .catch(err => console.error("SVG 載入失敗，請確認檔名是否為 firecracker.svg", err));
+
+    // Twitch 監聽
+    if(channel) {
+        ComfyJS.onRewardRedemption = (user, reward) => {
+            if (reward === targetReward) {
+                effectQueue.push({ user: user });
+                processQueue();
+            }
+        };
+        ComfyJS.Init(channel);
+    }
+
+    function processQueue() {
+        if (!isPlaying && effectQueue.length > 0 && svgContent) {
+            const next = effectQueue.shift();
+            startFirecrackerSequence(next.user);
+        }
+    }
+
+    function startFirecrackerSequence(user) {
+        isPlaying = true;
+        const wrapper = document.getElementById('svg-wrapper');
+        const textDiv = document.getElementById('result-text');
+        
+        // 重置介面
+        wrapper.innerHTML = svgContent; // 重新插入完整的 SVG
+        wrapper.style.opacity = 1;
+        textDiv.style.opacity = 0;
+        textDiv.style.transform = "scale(0.5)";
+
+        // 取得所有路徑
+        const paths = Array.from(wrapper.querySelectorAll('path'));
+        
+        // 篩選出「紅色」的鞭炮本體 (根據 SVG 內的 fill 屬性)
+        // 你的 SVG 紅色可能是 #EA0502, #FB2F10, #C60000 等等
+        let redPaths = paths.filter(p => {
+            const fill = p.getAttribute('fill');
+            return fill && (fill.includes('#EA0502') || fill.includes('#FB2F10') || fill.includes('#C60000') || fill.includes('#B30000'));
+        });
+
+        // 排序：由下往上炸 (Y 座標大的在下面)
+        // 我們計算每個 path 的邊界框中心點
+        redPaths.sort((a, b) => {
+            const rectA = a.getBoundingClientRect();
+            const rectB = b.getBoundingClientRect();
+            return rectB.top - rectA.top; // 由大到小 (由下往上)
+        });
+
+        // 開始逐個引爆
+        document.body.classList.add('shaking'); // 開始震動
+        
+        let i = 0;
+        const total = redPaths.length;
+        // 調整這個數值可以改變鞭炮施放速度 (目前 50毫秒 炸一個)
+        const speed = 50; 
+
+        const blastInterval = setInterval(() => {
+            if (i >= total) {
+                clearInterval(blastInterval);
+                finishSequence(user);
+                return;
+            }
+
+            const path = redPaths[i];
+            const rect = path.getBoundingClientRect();
+            
+            // 1. 產生爆炸光效
+            createBoom(rect.left + rect.width/2, rect.top + rect.height/2);
+            
+            // 2. 隱藏該鞭炮 (炸掉了)
+            path.style.visibility = 'hidden';
+
+            i++;
+        }, speed);
+    }
+
+    function createBoom(x, y) {
+        const boom = document.createElement('div');
+        boom.className = 'boom';
+        // 隨機一點位移，讓爆炸看起來自然
+        const offsetX = (Math.random() - 0.5) * 30;
+        const offsetY = (Math.random() - 0.5) * 30;
+        
+        boom.style.left = (x - 40 + offsetX) + 'px'; // 40 是寬度的一半
+        boom.style.top = (y - 40 + offsetY) + 'px';
+        boom.style.animation = "explodeAnim 0.3s ease-out forwards";
+        
+        document.getElementById('scene-container').appendChild(boom);
+        setTimeout(() => boom.remove(), 300);
+    }
+
+    function finishSequence(user) {
+        document.body.classList.remove('shaking'); // 停止震動
+        const wrapper = document.getElementById('svg-wrapper');
+        const textDiv = document.getElementById('result-text');
+
+        // 鞭炮殘骸消失
+        wrapper.style.opacity = 0;
+
+        // 顯示文字
+        setTimeout(() => {
+            const randomQuote = quotes[Math.floor(Math.random() * quotes.length)];
+            document.getElementById('u-name').innerText = `${user} 炸出了：`;
+            document.getElementById('q-text').innerText = randomQuote;
+            
+            textDiv.style.opacity = 1;
+            textDiv.style.transform = "scale(1)";
+
+            // 3秒後結束
+            setTimeout(() => {
+                textDiv.style.opacity = 0;
+                textDiv.style.transform = "scale(0.5)";
+                setTimeout(() => {
+                    isPlaying = false;
+                    processQueue();
+                }, 500);
+            }, 3000);
+        }, 200);
+    }
+
+    function testEffect() {
+        // 如果還沒載入 SVG，無法測試
+        if(!svgContent) { alert("SVG 尚未載入，請確認檔案位置！"); return; }
+        effectQueue.push({ user: "測試小夥伴" });
+        processQueue();
+    }
+</script>
+</body>
+</html>
